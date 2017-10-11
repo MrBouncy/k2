@@ -1,13 +1,35 @@
 ---
+# Module dependencies are recurive as of terraform 0.10.x.
+# See: https://github.com/hashicorp/terraform/pull/9236
+- set_fact:
+    tf_modules:
+      - vpc
+      - route53
+      - keypair
+      - subnet
+      - cluster_secgroup
+      - bastion
+      - etcd
+      - master
+      - node
+
+- set_fact:
+    tf_etcd_modules: "{{ tf_modules | difference(['master', 'node']) }}"
+    tf_k8s_modules: "{{ tf_modules | difference(['etcd']) }}"
+
+- set_fact:
+    tf_etcd_targets: "{% for module in tf_etcd_modules %} -target module.{{ module }}{{ ' ' if not loop.last else '' }}{% endfor %}"
+    tf_k8s_targets: "{% for module in tf_k8s_modules %} -target module.{{ module }}{{ ' ' if not loop.last else '' }}{% endfor %}"
+
 - name:
   set_fact:
     cluster: "{{ a_cluster }}"
-    etcd_status_lock_filename: "{{ config_base | expanduser }}/{{ cluster.name }}/etcd.status.lock"
+    etcd_status_lock_filename: "{{ config_base }}/{{ cluster.name }}/etcd.status.lock"
     ssl_cert_common_name: "*.{{ cluster.providerConfig.region }}.elb.amazonaws.com"
 
 - name: Ensure cluster directories exist
   file:
-    path: "{{ config_base | expanduser }}/{{ cluster.name }}/"
+    path: "{{ config_base }}/{{ cluster.name }}/"
     state: directory
     recurse: yes
 
@@ -50,7 +72,7 @@
 - name: Ensure etcd_status_lock file exists
   copy:
     content: ""
-    dest: "{{ config_base | expanduser }}/{{ cluster.name }}/etcd.status.lock"
+    dest: "{{ config_base }}/{{ cluster.name }}/etcd.status.lock"
 
 - include: aws-action-dryrun.yaml
 

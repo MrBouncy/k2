@@ -1,0 +1,33 @@
+---
+- name: Set Cluster Fact
+  set_fact:
+    cluster: "{{ a_cluster }}"
+
+- name: Make sure generated folder for full cloud configs is there
+  file:
+    path: "{{ config_base }}/{{ cluster.name }}/cloud-config"
+    state: directory
+
+
+- name: Generate node cloud init
+  copy:
+    dest: "{{ dest_path }}"
+    content: |-
+      #cloud-config
+      {{ cloud_config[cluster.name][item.name] | to_nice_yaml(indent=2) }}
+  vars:
+    dest_path: "{{ config_base }}/{{ cluster.name }}/cloud-config/{{ item.name }}.cloud-config.yaml"
+    file_needed: "{{ not (dest_path | is_file) }}"
+    not_etcd_node: "{{ item.etcdConfig is not defined }}"
+  when:
+    - file_needed or not_etcd_node
+  with_items:
+    - "{{ cluster.nodePools }}"
+
+- name: Create compressed cloud-config
+  archive:
+    path: "{{ dest_path }}"
+  vars:
+    dest_path: "{{ config_base }}/{{ cluster.name }}/cloud-config/{{ item.name }}.cloud-config.yaml"
+  with_items:
+    - "{{ cluster.nodePools }}"

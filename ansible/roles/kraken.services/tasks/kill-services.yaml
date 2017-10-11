@@ -1,23 +1,34 @@
 ---
-- set_fact:
+- name: Set cluster fact
+  set_fact:
     cluster: "{{ a_cluster }}"
 
-- set_fact:
+- name: Set facts needed for service management
+  set_fact:
     cluster_services: "{{ cluster.helmConfig.charts | default([]) }}"
     cluster_repos: "{{ cluster.helmConfig.repos | default([]) }}"
-    kubeconfig: "{{ config_base | expanduser }}/{{ cluster.name }}/admin.kubeconfig"
+    helm_command: "{{ helm_commands[cluster.name] }}"
+    helm_home: "{{ config_base }}/{{ cluster.name }}/.helm"
+    kubeconfig: "{{ config_base }}/{{ cluster.name }}/admin.kubeconfig"
     kubectl: "{{ kubectl_commands[cluster.name] }}"
     cluster_namespaces: []
 
-- set_fact:
+- name: Set dependent facts
+  set_fact:
+    helm_path: "{{ helm_command | dirname }}"
+
+
+- name: Build a list of namespaces used for services
+  set_fact:
     cluster_namespaces: "{{ cluster_namespaces + [item.namespace | default('kube-system')] }}"
   with_items: "{{ cluster_services }}"
 
-- set_fact:
+- name: Filter the list of namespaces
+  set_fact:
     cluster_namespaces: "{{ cluster_namespaces | unique | reject('search', 'kube-system') | list }}"
 
 - name: See if tiller rc if present
-  shell: >
+  command: >
       {{ kubectl }} --kubeconfig={{ kubeconfig }} get deployment {{ tiller }} --namespace=kube-system
   register: tiller_present
   when: kubeconfig | is_file
@@ -26,10 +37,11 @@
 
 - name: Clean up releases
   command: >
-    {{ helm_commands[cluster.name] }} delete --purge {{ item.name }}
+    {{ helm_command }} delete --purge {{ item.name }}
   environment:
     KUBECONFIG: "{{ kubeconfig }}"
-    HELM_HOME: "{{ helm_homes[cluster.name] }}"
+    HELM_HOME: "{{ helm_home }}"
+    PATH: "{{ helm_path }}:{{ ansible_env.PATH }}"
   with_items: "{{ cluster_services }}"
   ignore_errors: yes
   when:
@@ -84,7 +96,7 @@
   ignore_errors: yes
 
 - name: Get vpc id
-  shell: "terraform state show -state={{ config_base | expanduser }}/{{ cluster.name }}/terraform.tfstate module.vpc.aws_vpc.vpc  | awk '/^id/{print $3}'"
+  shell: "terraform state show -state={{ config_base }}/{{ cluster.name }}/terraform.tfstate module.vpc.aws_vpc.vpc  | awk '/^id/{print $3}'"
   register: terraform_state_show
   when: kraken_action == 'down'
   changed_when: false

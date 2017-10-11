@@ -4,8 +4,8 @@
     [Unit]
     After=docker.service
     After=kraken-ssl.service
-    Requires=docker.service
-    Requires=kraken-ssl.service
+    Wants=docker.service
+    Wants=kraken-ssl.service
     [Service]
     EnvironmentFile=/etc/network-environment
     ExecStartPre=/usr/bin/mkdir -p /var/lib/kubelet
@@ -13,6 +13,7 @@
     ExecStartPre=/usr/bin/mkdir -p /opt/cni/bin
     ExecStartPre=/usr/bin/bash -c '/usr/bin/wget https://github.com/containernetworking/cni/releases/download/v0.3.0/cni-v0.3.0.tgz -O - | sudo tar -xz -C /opt/cni/bin'
     ExecStartPre=/usr/bin/mkdir -p /etc/cni/net.d
+    ExecStartPre=/usr/bin/systemctl --quiet is-active docker.service kraken-ssl.service
     ExecStart=/usr/bin/rkt run \
       --volume etc-resolv-conf,kind=host,source=/etc/resolv.conf \
       --volume etc-cni,kind=host,source=/etc/cni \
@@ -42,7 +43,8 @@
       --exec=/hyperkube -- kubelet \
       --api_servers=https://apiserver.{{ cluster.name }}.internal \
       --register-node=true \
-      --node-labels=nodepool={{ node.name }}{% if node.nodeConfig.providerConfig.label is defined %},{% set comma = joiner(",") %}{% for label in node.nodeConfig.providerConfig.label  %}{{ comma() }}{{label.name}}={{label.value}}{% endfor %}{% endif %} \
+      {% if taints_exist == true %}--register-with-taints={% set comma = joiner(",") %}{% for taint in taints  %}{{ comma() }}{{taint.key}}={{taint.value}}:{{taint.effect}}{% endfor %}{% endif %} \
+      --node-labels=nodepool={{ node.name }}{% if node.nodeConfig.providerConfig.label is defined %},{% set comma = joiner(",") %}{% for label in node.nodeConfig.providerConfig.label  %}{{ comma() }}{{ label.name }}={{ label.value }}{% endfor %}{% endif %} \
       --allow-privileged=true \
       --pod-manifest-path=/etc/kubernetes/manifests \
       --kubeconfig=/etc/kubernetes/kubeconfig.yaml \
@@ -51,6 +53,8 @@
       --tls-cert-file=/etc/kubernetes/ssl/worker.pem \
       --tls-private-key-file=/etc/kubernetes/ssl/worker-key.pem \
       --network-plugin=cni \
+      --cni-conf-dir=/etc/cni/net.d \
+      --cni-bin-dir=/opt/cni/bin \
       --network-plugin-dir=/etc/cni/net.d \
       --cloud-provider={{ cluster.providerConfig.provider }} \
       --logtostderr=true

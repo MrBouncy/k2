@@ -10,18 +10,20 @@ gke_cloud_test_timeout = 60  // Should be about 4 min but can be as long as 50 f
 e2e_test_timeout       = 18  // Should be about 15 min
 cleanup_timeout        = 60  // Should be about 6 min
 
-e2e_kubernetes_version = "v1.7.4"
+e2e_kubernetes_version = "v1.7.6"
 e2etester_version      = "0.2"
 custom_jnlp_version    = "0.1"
 
 jnlp_image             = "quay.io/${quay_org}/custom-jnlp:${custom_jnlp_version}"
 k2_tools_image         = "quay.io/${quay_org}/k2-tools:${k2_tools_image_tag}"
+ansible_lint           = "quay.io/${quay_org}/ansible-lint:latest"
 e2e_tester_image       = "quay.io/${quay_org}/e2etester:${e2etester_version}"
 docker_image           = "docker"
 
 podTemplate(label: 'k2', containers: [
     containerTemplate(name: 'jnlp', image: jnlp_image, args: '${computer.jnlpmac} ${computer.name}'),
     containerTemplate(name: 'k2-tools', image: k2_tools_image, ttyEnabled: true, command: 'cat', alwaysPullImage: true, resourceRequestMemory: '1Gi', resourceLimitMemory: '1Gi'),
+    containerTemplate(name: 'ansible-lint', image: ansible_lint, ttyEnabled: true, command: 'cat', alwaysPullImage: true, resourceRequestMemory: '1Gi', resourceLimitMemory: '1Gi'),
     containerTemplate(name: 'e2e-tester', image: e2e_tester_image, ttyEnabled: true, command: 'cat', alwaysPullImage: true, resourceRequestMemory: '1Gi', resourceLimitMemory: '1Gi'),
     containerTemplate(name: 'docker', image: docker_image, command: 'cat', ttyEnabled: true)
   ], volumes: [
@@ -57,7 +59,9 @@ podTemplate(label: 'k2', containers: [
 
             // Unit tests
             stage('Test: Unit') {
-                kubesh 'true' // Add unit test call here
+                customContainer('ansible-lint') {
+                    kubesh 'ansible-lint ansible/*.yaml'
+                }
             }
 
             // Live tests
@@ -73,7 +77,7 @@ podTemplate(label: 'k2', containers: [
                             },
                             "gke": {
                                 timeout(gke_cloud_test_timeout) {
-                                    echo "no-op" //kubesh "env helm_override_`echo ${JOB_BASE_NAME}-${BUILD_ID} " + '| tr \'[:upper:]\' \'[:lower:]\' | tr \'-\' \'_\'`=false PWD=`pwd` ./bin/up.sh --config $PWD/cluster/gke/config.yaml --output $PWD/cluster/gke/'
+                                    kubesh "env helm_override_`echo ${JOB_BASE_NAME}-${BUILD_ID} " + '| tr \'[:upper:]\' \'[:lower:]\' | tr \'-\' \'_\'`=false PWD=`pwd` ./bin/up.sh --config $PWD/cluster/gke/config.yaml --output $PWD/cluster/gke/'
                                 }
                             }
                         )
@@ -119,7 +123,7 @@ podTemplate(label: 'k2', containers: [
                                 kubesh "env helm_override_`echo ${JOB_BASE_NAME}-${BUILD_ID} " + '| tr \'[:upper:]\' \'[:lower:]\' | tr \'-\' \'_\'`=false PWD=`pwd` ./bin/down.sh --config $PWD/cluster/aws/config.yaml --output $PWD/cluster/aws/ || true'
                             },
                             "gke": {
-                                echo "no-op" //kubesh "env helm_override_`echo ${JOB_BASE_NAME}-${BUILD_ID} " + '| tr \'[:upper:]\' \'[:lower:]\' | tr \'-\' \'_\'`=false PWD=`pwd` ./bin/down.sh --config $PWD/cluster/gke/config.yaml --output $PWD/cluster/gke/'
+                                kubesh "env helm_override_`echo ${JOB_BASE_NAME}-${BUILD_ID} " + '| tr \'[:upper:]\' \'[:lower:]\' | tr \'-\' \'_\'`=false PWD=`pwd` ./bin/down.sh --config $PWD/cluster/gke/config.yaml --output $PWD/cluster/gke/'
                             }
                         )
                     }

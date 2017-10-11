@@ -1,10 +1,7 @@
 ---
-- set_fact:
+- name: Set cluster fact
+  set_fact:
     cluster: "{{ a_cluster }}"
-
-- name: Prevent up if cluster is already up
-  include: check-clusters-lock.yaml
-  when: kraken_action =='up'
 
 - name: Verify all clusters in the clusters list have names
   fail:
